@@ -1,6 +1,7 @@
 // Mash Lab: stitch monsters from parts to fill the Night Parade's orders before the lantern burns out.
 import { boardLines } from './board.mjs';
 (() => {
+  window.__modRan = true; (window.__dbg || (() => {}))('module running');
   const W = 400, H = 720;
   const cv = document.getElementById('c');
   const g = cv.getContext('2d');
@@ -12,7 +13,7 @@ import { boardLines } from './board.mjs';
     scale = Math.min(innerWidth / W, innerHeight / H) * dpr;
     ox = (cv.width - W * scale) / 2; oy = (cv.height - H * scale) / 2;
   }
-  addEventListener('resize', resize); resize();
+  addEventListener('resize', resize); resize(); (window.__dbg || (() => {}))('resize ' + cv.width + 'x' + cv.height);
 
   // ---------- traits & parts ----------
   const T = {
@@ -242,7 +243,9 @@ import { boardLines } from './board.mjs';
 
   // ---------- frame ----------
   function frame(now) {
-    const dt = Math.min(.05, (now - last) / 1000); last = now; t += dt;
+    const dt = Math.min(.05, (now - last) / 1000); last = now; t += dt; window.__frames = (window.__frames || 0) + 1;
+    // the host iframe can be sized after load and never fire resize: follow the viewport every frame
+    if (cv.width !== Math.round(innerWidth * (window.devicePixelRatio || 1)) || cv.height !== Math.round(innerHeight * (window.devicePixelRatio || 1))) resize();
     if (state === 'play') { order.left -= dt; if (order.left <= 0) miss('Too slow! ' + order.who + ' left.'); }
     if (state === 'play' && order.left < 3 && Math.floor(order.left * 2) !== Math.floor((order.left + dt) * 2)) beep(880, .04); // lantern about to go out
     wobble = Math.max(0, wobble - dt * 2); shake = Math.max(0, shake - dt * 40);

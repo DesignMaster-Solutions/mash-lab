@@ -11,6 +11,15 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<pre id="dbg" style="position:fixed;left:0;top:0;z-index:9;color:#0f0;background:rgba(0,0,0,.6);font:12px monospace;margin:0;padding:4px;max-width:100vw;white-space:pre-wrap"></pre>
+<script>
+(function () { var d = document.getElementById('dbg'); function log(m) { d.textContent += m + '\n'; } window.__dbg = log;
+log('html ok ' + navigator.userAgent.slice(0, 70)); log('vp ' + innerWidth + 'x' + innerHeight + ' dpr ' + devicePixelRatio + ' hidden=' + document.hidden);
+addEventListener('error', function (e) { log('ERR ' + (e.message || 'resource') + ' @' + String(e.filename || (e.target && e.target.src) || '').slice(-50) + ':' + (e.lineno || '')); }, true);
+addEventListener('unhandledrejection', function (e) { log('REJ ' + (e.reason && (e.reason.message || e.reason))); });
+[2000, 6000].forEach(function (ms) { setTimeout(function () { var c = document.getElementById('c'); log('t' + ms + ' canvas ' + c.width + 'x' + c.height + ' vp ' + innerWidth + 'x' + innerHeight + ' mod=' + !!window.__modRan + ' frames=' + (window.__frames || 0) + ' hidden=' + document.hidden); }, ms); });
+})();
+</script>
 <script type="module" src="game.js"></script>
 </body>
 </html>
