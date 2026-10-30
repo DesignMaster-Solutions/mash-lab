@@ -1,5 +1,4 @@
 // Mash Lab: stitch monsters from parts to fill the Night Parade's orders before the lantern burns out.
-import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { boardLines } from './board.mjs';
 (() => {
   const W = 400, H = 720;
@@ -99,16 +98,19 @@ import { boardLines } from './board.mjs';
     } else newOrder();
   }
 
-  // RUN leaderboard. Every SDK call can reject (no host when run standalone), so a failure just leaves the board empty.
+  // RUN leaderboard, loaded only here: the SDK awaits the host handshake while it imports, and 1.0.1 proved that a static
+  // import keeps the whole game from starting when that handshake never answers. Every call can reject, so a failure
+  // (or the 8 s timeout) just leaves the board empty.
+  const sdk = () => import('@series-inc/rundot-game-sdk/api').then((m) => m.default);
   async function postScore() {
-    board = ['Posting score...'];
+    const myRun = runStart; board = ['Posting score...'];
     try {
-      const lb = RundotGameAPI.leaderboard;
+      const lb = await Promise.race([sdk().then((api) => api.leaderboard), new Promise((_, rej) => setTimeout(() => rej(new Error('sdk timeout')), 8000))]);
       const duration = Math.max(10, Math.round((performance.now() - runStart) / 1000));
       await lb.submitScore({ score, duration, metadata: { served } });
       const top = await lb.getPagedScores({ limit: 5 });
-      board = boardLines({ rank: top.playerRank, totalPlayers: top.totalEntries }, top.entries);
-    } catch (e) { board = []; }
+      if (runStart === myRun) board = boardLines({ rank: top.playerRank, totalPlayers: top.totalEntries }, top.entries);
+    } catch (e) { if (runStart === myRun) board = []; }
   }
 
   // ---------- audio ----------

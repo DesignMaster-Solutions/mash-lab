@@ -1,10 +1,10 @@
 {
   "name": "mash-lab",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/game.js --bundle --format=esm --platform=browser --minify --outfile=dist/game.js",
+    "build": "esbuild src/game.js --bundle --format=esm --platform=browser --splitting --minify --outdir=dist --chunk-names=sdk-[hash]",
     "test": "node --test test/"
   },
   "dependencies": {
