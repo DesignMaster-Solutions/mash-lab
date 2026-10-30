@@ -1,0 +1,17 @@
+{
+  "gameId": "u6lozRS3XAIooBetq6ra",
+  "relativePathToDistFolder": "dist",
+  "usesPreloader": false,
+  "fullscreenEnabled": true,
+  "maxDpr": 1.5,
+  "orientation": "portrait",
+  "platformFit": "both",
+  "keywords": [
+    "monster",
+    "puzzle",
+    "halloween",
+    "arcade",
+    "monster-mash"
+  ],
+  "kitId": null
+}
