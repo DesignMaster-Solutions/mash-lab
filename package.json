@@ -1,0 +1,16 @@
+{
+  "name": "mash-lab",
+  "private": true,
+  "version": "1.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/game.js --bundle --format=esm --platform=browser --minify --outfile=dist/game.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@series-inc/rundot-game-sdk": "5.33.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
