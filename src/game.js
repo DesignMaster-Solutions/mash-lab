@@ -1,5 +1,6 @@
 // Mash Lab: stitch monsters from parts to fill the Night Parade's orders before the lantern burns out.
 import { boardLines } from './board.mjs';
+import { BPM, midiFreq, patternAt } from './music.mjs';
 (() => {
   const W = 400, H = 720;
   const cv = document.getElementById('c');
@@ -115,16 +116,33 @@ import { boardLines } from './board.mjs';
 
   // ---------- audio ----------
   let ac = null;
-  function beep(f, d, type = 'square') {
+  const ctx = () => (ac = ac || new (window.AudioContext || window.webkitAudioContext)());
+  function tone(f, at, d, type = 'square', gain = .06) {
     try {
-      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
-      const o = ac.createOscillator(), v = ac.createGain();
-      o.type = type; o.frequency.value = f; v.gain.value = .06;
-      v.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + d);
-      o.connect(v).connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
+      const o = ctx().createOscillator(), v = ac.createGain();
+      o.type = type; o.frequency.value = f; v.gain.setValueAtTime(gain, at);
+      v.gain.exponentialRampToValueAtTime(.0001, at + d);
+      o.connect(v).connect(ac.destination); o.start(at); o.stop(at + d);
     } catch (e) { /* audio is optional */ }
   }
+  const beep = (f, d, type) => { try { tone(f, ctx().currentTime, d, type); } catch (e) { /* audio is optional */ } };
   const chord = (fs) => fs.forEach((f, i) => setTimeout(() => beep(f, .15, 'triangle'), i * 70));
+  // music: the E minor march from music.mjs, scheduled 0.2 s ahead each frame (the context only exists after a tap, so
+  // autoplay rules are respected); it quickens while the lantern is about to go out. Tap the note or press M to mute.
+  let musicOn = store.get('mashlab_music') !== 'off', nextStep = 0, nextTime = 0;
+  const MUTE = { x: 348, y: 174, w: 42, h: 40 };
+  function music() {
+    if (!musicOn || !ac || ac.state !== 'running') { nextTime = 0; return; }
+    if (!nextTime) nextTime = ac.currentTime + .05;
+    const stepDur = 30 / BPM * (state === 'play' && order.left < 3 ? .8 : 1);
+    while (nextTime < ac.currentTime + .2) {
+      const { bass, lead } = patternAt(nextStep);
+      if (bass) tone(midiFreq(bass), nextTime, stepDur * 1.8, 'sawtooth', .045);
+      if (lead) tone(midiFreq(lead), nextTime, stepDur * .9, 'triangle', .07);
+      nextTime += stepDur; nextStep++; cv.dataset.music = 'on:' + nextStep;
+    }
+  }
+  function toggleMusic() { musicOn = !musicOn; store.set('mashlab_music', musicOn ? 'on' : 'off'); if (!musicOn) cv.dataset.music = 'off'; beep(musicOn ? 660 : 220, .08); }
 
   // ---------- layout ----------
   const ROW_Y = [448, 522, 596], ROW_H = 56;
@@ -138,13 +156,15 @@ import { boardLines } from './board.mjs';
   cv.addEventListener('pointerdown', (e) => {
     const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
     const x = ((e.clientX - r.left) * dpr - ox) / scale, y = ((e.clientY - r.top) * dpr - oy) / scale;
+    try { ctx().resume(); } catch (e) { /* audio is optional */ }
+    if (x > MUTE.x && x < MUTE.x + MUTE.w && y > MUTE.y && y < MUTE.y + MUTE.h) { toggleMusic(); return; }
     if (state !== 'play') { start(); return; }
     for (let i = 0; i < 3; i++) rowBoxes(i).forEach((b, j) => {
       if (x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) { pick[i] = j; wobble = 1; beep(300 + i * 120 + j * 40, .06); }
     });
     if (x > BTN.x && x < BTN.x + BTN.w && y > BTN.y && y < BTN.y + BTN.h) submit();
   });
-  addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') state === 'play' ? submit() : start(); });
+  addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') state === 'play' ? submit() : start(); else if (e.key === 'm' || e.key === 'M') toggleMusic(); });
 
   // ---------- drawing helpers ----------
   function circle(x, y, r, fill, stroke) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = 3; g.stroke(); } }
@@ -248,6 +268,7 @@ import { boardLines } from './board.mjs';
     if (state === 'play') { order.left -= dt; if (order.left <= 0) miss('Too slow! ' + order.who + ' left.'); }
     if (state === 'play' && order.left < 3 && Math.floor(order.left * 2) !== Math.floor((order.left + dt) * 2)) beep(880, .04); // lantern about to go out
     wobble = Math.max(0, wobble - dt * 2); shake = Math.max(0, shake - dt * 40);
+    music();
 
     g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#120c1c'; g.fillRect(0, 0, cv.width, cv.height);
     g.setTransform(scale, 0, 0, scale, ox + (Math.random() - .5) * shake * scale, oy + (Math.random() - .5) * shake * scale);
@@ -257,6 +278,10 @@ import { boardLines } from './board.mjs';
     circle(338, 222, 30, '#fff4c9'); circle(349, 214, 26, '#22153a');
     for (let i = 0; i < 30; i++) circle((i * 97) % W, (i * 53) % 260, (i % 3) * .6 + .6, `rgba(255,255,255,${.3 + .3 * Math.sin(t * 2 + i)})`);
     g.fillStyle = '#160d26'; g.beginPath(); g.moveTo(0, 430); for (let x = 0; x <= W; x += 20) g.lineTo(x, 400 + Math.sin(x / 60) * 18); g.lineTo(W, 460); g.lineTo(0, 460); g.fill();
+    // music toggle (top right, under the hearts)
+    circle(369, 194, 17, musicOn ? 'rgba(198,255,74,.18)' : 'rgba(255,255,255,.06)', musicOn ? '#c6ff4a' : 'rgba(255,255,255,.3)');
+    text('\u266a', 369, 195, 20, musicOn ? '#c6ff4a' : 'rgba(255,255,255,.4)');
+    if (!musicOn) { g.strokeStyle = '#ff6b8b'; g.lineWidth = 3; g.beginPath(); g.moveTo(358, 205); g.lineTo(380, 183); g.stroke(); }
 
     if (state === 'title') {
       text('MASH LAB', 200, 120, 54, '#c6ff4a'); text('Stitch a monster. Fill the order.', 200, 165, 17, '#e8dcff', 'center', 600);
