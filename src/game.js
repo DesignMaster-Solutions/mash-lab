@@ -130,7 +130,7 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
   // music: the E minor march from music.mjs, scheduled 0.2 s ahead each frame (the context only exists after a tap, so
   // autoplay rules are respected); it quickens while the lantern is about to go out. Tap the note or press M to mute.
   let musicOn = store.get('mashlab_music') !== 'off', nextStep = 0, nextTime = 0;
-  const MUTE = { x: 348, y: 174, w: 42, h: 40 };
+  const MUTE = { x: 10, y: 174, w: 42, h: 40 };
   function music() {
     if (!musicOn || !ac || ac.state !== 'running') { nextTime = 0; return; }
     if (!nextTime) nextTime = ac.currentTime + .05;
@@ -278,10 +278,10 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
     circle(338, 222, 30, '#fff4c9'); circle(349, 214, 26, '#22153a');
     for (let i = 0; i < 30; i++) circle((i * 97) % W, (i * 53) % 260, (i % 3) * .6 + .6, `rgba(255,255,255,${.3 + .3 * Math.sin(t * 2 + i)})`);
     g.fillStyle = '#160d26'; g.beginPath(); g.moveTo(0, 430); for (let x = 0; x <= W; x += 20) g.lineTo(x, 400 + Math.sin(x / 60) * 18); g.lineTo(W, 460); g.lineTo(0, 460); g.fill();
-    // music toggle (top right, under the hearts)
-    circle(369, 194, 17, musicOn ? 'rgba(198,255,74,.18)' : 'rgba(255,255,255,.06)', musicOn ? '#c6ff4a' : 'rgba(255,255,255,.3)');
-    text('\u266a', 369, 195, 20, musicOn ? '#c6ff4a' : 'rgba(255,255,255,.4)');
-    if (!musicOn) { g.strokeStyle = '#ff6b8b'; g.lineWidth = 3; g.beginPath(); g.moveTo(358, 205); g.lineTo(380, 183); g.stroke(); }
+    // music toggle (top left, under the score; the moon lives top right)
+    circle(31, 194, 17, musicOn ? 'rgba(198,255,74,.18)' : 'rgba(255,255,255,.06)', musicOn ? '#c6ff4a' : 'rgba(255,255,255,.3)');
+    text('\u266a', 31, 195, 20, musicOn ? '#c6ff4a' : 'rgba(255,255,255,.4)');
+    if (!musicOn) { g.strokeStyle = '#ff6b8b'; g.lineWidth = 3; g.beginPath(); g.moveTo(20, 205); g.lineTo(42, 183); g.stroke(); }
 
     if (state === 'title') {
       text('MASH LAB', 200, 120, 54, '#c6ff4a'); text('Stitch a monster. Fill the order.', 200, 165, 17, '#e8dcff', 'center', 600);
