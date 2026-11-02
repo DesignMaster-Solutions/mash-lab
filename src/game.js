@@ -1,8 +1,12 @@
 // Mash Lab: stitch monsters from parts to fill the Night Parade's orders before the lantern burns out.
 import { boardLines } from './board.mjs';
 import { BPM, midiFreq, patternAt } from './music.mjs';
+import { MASH_DUR, FALL_DUR, mashPose, fallPose } from './anim.mjs';
+import { hintBoxes } from './hint.mjs';
 (() => {
-  const W = 400, H = 720;
+  // ?poster draws the key art (square) that becomes the jam thumbnail; the game itself is a 400x720 portrait
+  const POSTER = /[?&]poster\b/.test(location.search);
+  const W = 400, H = POSTER ? 400 : 720;
   const cv = document.getElementById('c');
   const g = cv.getContext('2d');
   let scale = 1, ox = 0, oy = 0;
@@ -50,13 +54,15 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
   const WANTS = ['for the parade', 'to guard the crypt', 'to scare the tax man', 'for a birthday', 'to mind the pumpkins', 'to win the fair', 'as a night-light', 'to haunt the library'];
 
   // ---------- state ----------
-  let state = 'title', t = 0, last = performance.now();
+  let state = POSTER ? 'poster' : 'title', t = 0, last = performance.now();
   let pick = [0, 0, 0], order = null, score = 0, lives = 3, streak = 0, served = 0;
   // Browser storage can throw SecurityError inside the host's partitioned iframe: never let it take the game down.
   const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sandboxed */ } } };
   let best = +(store.get('mashlab_best') || 0);
   let shake = 0, flash = null, particles = [], wobble = 0, popups = [];
   let board = [], runStart = 0;
+  let anim = null; // { kind: 'mash' | 'fall', t0 }: the delivery dance or the miss tumble, read by drawMonster
+  const HINT_ORDERS = 3; // the first orders of every run light the boxes that bring a missing trait
 
   const rnd = (n) => Math.floor(Math.random() * n);
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -69,11 +75,13 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
     const traits = shuffle(pool).slice(0, need);
     const time = Math.max(7, 16 - served * 0.6);
     order = { who: VILLAGERS[rnd(VILLAGERS.length)], why: WANTS[rnd(WANTS.length)], traits, time, left: time };
+    cv.dataset.order = traits.join(' ');
   }
   function currentTraits() { return new Set(ROWS.flatMap((r, i) => r[pick[i]].traits)); }
-  function start() { state = 'play'; score = 0; lives = 3; streak = 0; served = 0; pick = [0, 0, 0]; board = []; runStart = performance.now(); newOrder(); beep(440, .08); }
+  function start() { anim = null; state = 'play'; score = 0; lives = 3; streak = 0; served = 0; pick = [0, 0, 0]; board = []; runStart = performance.now(); newOrder(); beep(440, .08); }
 
   function submit() {
+    if (anim && anim.kind === 'mash') return; // one delivery at a time
     const have = currentTraits();
     const ok = order.traits.every(k => have.has(k));
     if (ok) {
@@ -85,11 +93,12 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
       for (let i = 0; i < 40; i++) particles.push({ x: 200, y: 330, vx: (Math.random() - .5) * 9, vy: -Math.random() * 9, life: 1, col: T[order.traits[i % order.traits.length]].col });
       flash = { col: 'rgba(198,255,74,', a: .35 };
       chord([523, 659, 784]);
+      anim = { kind: 'mash', t0: t }; cv.dataset.last = 'mash ' + served; // read by the device test
       newOrder();
     } else miss('Not quite. They wanted ' + order.traits.filter(k => !have.has(k)).map(k => T[k].label).join(' + '));
   }
   function miss(msg) {
-    lives--; streak = 0; shake = 14; flash = { col: 'rgba(255,80,80,', a: .4 };
+    lives--; streak = 0; shake = 14; flash = { col: 'rgba(255,80,80,', a: .4 }; anim = { kind: 'fall', t0: t }; cv.dataset.last = 'fall ' + lives;
     popups.push({ text: msg, y: 300, life: 1.8, small: true });
     beep(140, .25, 'sawtooth');
     if (lives <= 0) {
@@ -158,13 +167,14 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
     const x = ((e.clientX - r.left) * dpr - ox) / scale, y = ((e.clientY - r.top) * dpr - oy) / scale;
     try { ctx().resume(); } catch (e) { /* audio is optional */ }
     if (x > MUTE.x && x < MUTE.x + MUTE.w && y > MUTE.y && y < MUTE.y + MUTE.h) { toggleMusic(); return; }
+    if (state === 'poster') return;
     if (state !== 'play') { start(); return; }
     for (let i = 0; i < 3; i++) rowBoxes(i).forEach((b, j) => {
       if (x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) { pick[i] = j; wobble = 1; beep(300 + i * 120 + j * 40, .06); }
     });
     if (x > BTN.x && x < BTN.x + BTN.w && y > BTN.y && y < BTN.y + BTN.h) submit();
   });
-  addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') state === 'play' ? submit() : start(); else if (e.key === 'm' || e.key === 'M') toggleMusic(); });
+  addEventListener('keydown', (e) => { if (state === 'poster') return; if (e.key === ' ' || e.key === 'Enter') state === 'play' ? submit() : start(); else if (e.key === 'm' || e.key === 'M') toggleMusic(); });
 
   // ---------- drawing helpers ----------
   function circle(x, y, r, fill, stroke) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = 3; g.stroke(); } }
@@ -244,13 +254,21 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
     g.lineCap = 'butt';
   }
 
+  const PIVOT = [[0, -72], [0, 20], [0, -40]]; // head, body, extra: each part tumbles around its own middle
   function drawMonster(x, y, s) {
-    g.save(); g.translate(x, y); const w = 1 + Math.sin(wobble * 12) * wobble * .12; g.scale(s * w, s / w);
-    const [h, b, e] = [HEADS[pick[0]], BODIES[pick[1]], EXTRAS[pick[2]]];
-    const behind = e.draw === exBat || e.draw === exMoth;
-    if (behind) e.draw();
-    b.draw(); h.draw();
-    if (!behind) e.draw();
+    const e = anim ? t - anim.t0 : 0, m = anim && anim.kind === 'mash' ? mashPose(e) : null;
+    g.save(); g.translate(x + (m ? m.x : 0), y + (m ? m.y : 0)); if (m) g.rotate(m.rot);
+    const w = 1 + Math.sin(wobble * 12) * wobble * .12, k = m ? m.s : 1; g.scale(s * w * k, s / w * k);
+    const [h, b, ex] = [HEADS[pick[0]], BODIES[pick[1]], EXTRAS[pick[2]]];
+    const part = (i, p) => {
+      g.save();
+      if (anim && anim.kind === 'fall') { const f = fallPose(i, e), [px, py] = PIVOT[i]; g.translate(f.x + px, f.y + py); g.rotate(f.rot); g.translate(-px, -py); }
+      p.draw(); g.restore();
+    };
+    const behind = ex.draw === exBat || ex.draw === exMoth;
+    if (behind) part(2, ex);
+    part(1, b); part(0, h);
+    if (!behind) part(2, ex);
     g.restore();
   }
   function pill(k, x, y, ok) {
@@ -260,13 +278,31 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
     return w;
   }
 
+  function drawPoster() {
+    text('MASH LAB', 200, 60, 62, '#c6ff4a');
+    pick = [1, 0, 3]; // Jack + Ooze + Moth wings (they glow, so they read on the dark sky): glows, fiery, slimy, flies
+    const sway = Math.sin(t * 4) * .08;
+    g.save(); g.shadowColor = '#7a5bd6'; g.shadowBlur = 40; rr(110, 330, 180, 14, 7, '#3b2a55'); g.restore();
+    g.save(); g.translate(200, 236); g.rotate(sway); g.translate(-200, -236); drawMonster(200, 236, 1.02); g.restore();
+    [['GLOW', 66, 120], ['FLY', 334, 120], ['FIRE', 60, 290], ['SLIME', 340, 290]].forEach(([k, x, y]) => pill(k, x, y, true));
+    text('\u266a', 140, 118 + Math.sin(t * 3) * 3, 24, '#ffad33'); text('\u266b', 262, 112 - Math.sin(t * 3) * 3, 24, '#ffad33');
+    text('Stitch the monster they ordered', 200, 372, 19, '#fff4c9', 'center', 700);
+  }
+
   // ---------- frame ----------
   function frame(now) {
-    const dt = Math.min(.05, (now - last) / 1000); last = now; t += dt;
+    requestAnimationFrame(frame); // first: one bad frame must never freeze the game
+    // the first rAF stamp can precede the script's performance.now() (headless Chrome): a negative dt made t negative and
+    // the title read HEADS[-1], freezing 1.0.6 on its first frame there
+    const dt = Math.max(0, Math.min(.05, (now - last) / 1000)); last = now; t += dt;
     // the host iframe can be sized after load and never fire resize: follow the viewport every frame
     if (cv.width !== Math.round(innerWidth * (window.devicePixelRatio || 1)) || cv.height !== Math.round(innerHeight * (window.devicePixelRatio || 1))) resize();
-    if (state === 'play') { order.left -= dt; if (order.left <= 0) miss('Too slow! ' + order.who + ' left.'); }
-    if (state === 'play' && order.left < 3 && Math.floor(order.left * 2) !== Math.floor((order.left + dt) * 2)) beep(880, .04); // lantern about to go out
+    if (anim && t - anim.t0 > (anim.kind === 'mash' ? MASH_DUR : FALL_DUR)) anim = null;
+    if (anim) { const e = t - anim.t0, q = anim.kind === 'mash' ? mashPose(e) : fallPose(0, e); cv.dataset.pose = `${anim.kind} ${e.toFixed(2)} x${Math.round(q.x)} y${Math.round(q.y)} s${q.s.toFixed(2)}`; }
+    cv.dataset.state = state;
+    const ticking = state === 'play' && !(anim && anim.kind === 'mash');
+    if (ticking) { order.left -= dt; if (order.left <= 0) miss('Too slow! ' + order.who + ' left.'); }
+    if (ticking && order.left < 3 && Math.floor(order.left * 2) !== Math.floor((order.left + dt) * 2)) beep(880, .04); // lantern about to go out
     wobble = Math.max(0, wobble - dt * 2); shake = Math.max(0, shake - dt * 40);
     music();
 
@@ -275,15 +311,18 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
     // backdrop: moon, hills, lab glow
     const sky = g.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#2a1a45'); sky.addColorStop(.6, '#1a1030'); sky.addColorStop(1, '#0d0816');
     g.fillStyle = sky; g.fillRect(0, 0, W, H);
-    circle(338, 222, 30, '#fff4c9'); circle(349, 214, 26, '#22153a');
+    if (!POSTER) { circle(338, 222, 30, '#fff4c9'); circle(349, 214, 26, '#22153a'); }
     for (let i = 0; i < 30; i++) circle((i * 97) % W, (i * 53) % 260, (i % 3) * .6 + .6, `rgba(255,255,255,${.3 + .3 * Math.sin(t * 2 + i)})`);
     g.fillStyle = '#160d26'; g.beginPath(); g.moveTo(0, 430); for (let x = 0; x <= W; x += 20) g.lineTo(x, 400 + Math.sin(x / 60) * 18); g.lineTo(W, 460); g.lineTo(0, 460); g.fill();
     // music toggle (top left, under the score; the moon lives top right)
+    if (!POSTER) {
     circle(31, 194, 17, musicOn ? 'rgba(198,255,74,.18)' : 'rgba(255,255,255,.06)', musicOn ? '#c6ff4a' : 'rgba(255,255,255,.3)');
     text('\u266a', 31, 195, 20, musicOn ? '#c6ff4a' : 'rgba(255,255,255,.4)');
     if (!musicOn) { g.strokeStyle = '#ff6b8b'; g.lineWidth = 3; g.beginPath(); g.moveTo(20, 205); g.lineTo(42, 183); g.stroke(); }
+    }
 
-    if (state === 'title') {
+    if (state === 'poster') drawPoster();
+    else if (state === 'title') {
       text('MASH LAB', 200, 120, 54, '#c6ff4a'); text('Stitch a monster. Fill the order.', 200, 165, 17, '#e8dcff', 'center', 600);
       pick = [Math.floor(t * .8) % 4, Math.floor(t * .8 + 1) % 4, Math.floor(t * .8 + 2) % 5]; drawMonster(200, 340, 1);
       text('Tap a head, a body and an extra', 200, 500, 16, '#e8dcff', 'center', 600);
@@ -306,6 +345,9 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
       drawMonster(200, 300, .92);
       // part rows
       const labels = ['HEAD', 'BODY', 'EXTRA'];
+      const hints = state === 'play' && served < HINT_ORDERS ? hintBoxes(ROWS, pick, order.traits) : null;
+      const lit = hints ? hints.flat().filter((ks) => ks.length).length : 0; cv.dataset.hints = lit;
+      if (lit) text('Glowing parts bring a trait you still need', 200, 178, 12, '#c6ff4a', 'center', 700);
       for (let i = 0; i < 3; i++) {
         text(labels[i], 14, ROW_Y[i] - 9, 11, '#9f8cc4', 'left', 800);
         rowBoxes(i).forEach((b, j) => {
@@ -313,6 +355,7 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
           rr(b.x, b.y, b.w, b.h, 12, sel ? 'rgba(198,255,74,.18)' : 'rgba(255,255,255,.06)', sel ? '#c6ff4a' : 'rgba(255,255,255,.12)');
           text(p.name, b.x + b.w / 2, b.y + 18, ROWS[i].length > 4 ? 12 : 14, sel ? '#fff' : '#ddd0f5', 'center', 800);
           p.traits.forEach((k, m) => { const n = p.traits.length; circle(b.x + b.w / 2 + (m - (n - 1) / 2) * 16, b.y + 40, 6, T[k].col); });
+          if (hints && hints[i][j].length) { const col = T[hints[i][j][0]].col; g.save(); g.shadowColor = col; g.shadowBlur = 10 + Math.sin(t * 6) * 6; g.globalAlpha = .7 + .3 * Math.sin(t * 6); rr(b.x, b.y, b.w, b.h, 12, null, col); g.lineWidth = 3; g.stroke(); g.restore(); }
         });
       }
       rr(BTN.x, BTN.y, BTN.w, BTN.h, 20, '#c6ff4a'); text('UNLEASH IT!', 200, BTN.y + 24, 18, '#1b1026');
@@ -328,11 +371,20 @@ import { BPM, midiFreq, patternAt } from './music.mjs';
     particles = particles.filter(p => (p.life -= dt) > 0); particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .35; circle(p.x, p.y, 4 * p.life + 1, p.col); });
     popups = popups.filter(p => (p.life -= dt) > 0); popups.forEach(p => { p.y -= dt * 30; g.globalAlpha = Math.min(1, p.life * 2); text(p.text, 200, p.y, p.small ? 15 : 24, p.small ? '#ffb3c1' : '#c6ff4a'); g.globalAlpha = 1; });
     if (flash) { g.fillStyle = flash.col + flash.a + ')'; g.fillRect(0, 0, W, H); flash.a -= dt; if (flash.a <= 0) flash = null; }
-    requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   // self-check: every generated order is solvable by some combination
   for (let i = 0; i < 200; i++) { served = i % 15; newOrder(); const ok = HEADS.some((h) => BODIES.some((b) => EXTRAS.some((e) => order.traits.every(k => [...h.traits, ...b.traits, ...e.traits].includes(k))))); if (!ok) console.error('unsolvable order', order); }
   served = 0; order = null;
+
+  // ?autoplay: a scripted run (start, one right delivery, one wrong one) so a headless browser can screenshot the dance,
+  // the tumble and the hints without a touch screen. Players never see it.
+  if (/[?&]autoplay\b/.test(location.search)) {
+    const combos = HEADS.flatMap((h, a) => BODIES.flatMap((b, c) => EXTRAS.map((x, d) => [a, c, d])));
+    const fits = ([a, c, d]) => order.traits.every((k) => [...HEADS[a].traits, ...BODIES[c].traits, ...EXTRAS[d].traits].includes(k));
+    setTimeout(start, 300);
+    setTimeout(() => { pick = combos.find(fits); submit(); }, 1200);
+    setTimeout(() => { pick = combos.find((p) => !fits(p)); submit(); }, 3000);
+  }
 })();
