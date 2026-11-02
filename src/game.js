@@ -3,6 +3,7 @@ import { boardLines } from './board.mjs';
 import { BPM, midiFreq, patternAt } from './music.mjs';
 import { MASH_DUR, FALL_DUR, mashPose, fallPose } from './anim.mjs';
 import { hintBoxes } from './hint.mjs';
+import { monsterName, codexKey, record, TOTAL } from './codex.mjs';
 (() => {
   // ?poster draws the key art (square) that becomes the jam thumbnail; the game itself is a 400x720 portrait
   const POSTER = /[?&]poster\b/.test(location.search);
@@ -59,6 +60,7 @@ import { hintBoxes } from './hint.mjs';
   // Browser storage can throw SecurityError inside the host's partitioned iframe: never let it take the game down.
   const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sandboxed */ } } };
   let best = +(store.get('mashlab_best') || 0);
+  const book = new Set((store.get('mashlab_book') || '').split(',').filter(Boolean)); let foundRun = 0;
   let shake = 0, flash = null, particles = [], wobble = 0, popups = [];
   let board = [], runStart = 0;
   let anim = null; // { kind: 'mash' | 'fall', t0 }: the delivery dance or the miss tumble, read by drawMonster
@@ -78,7 +80,7 @@ import { hintBoxes } from './hint.mjs';
     cv.dataset.order = traits.join(' ');
   }
   function currentTraits() { return new Set(ROWS.flatMap((r, i) => r[pick[i]].traits)); }
-  function start() { anim = null; state = 'play'; score = 0; lives = 3; streak = 0; served = 0; pick = [0, 0, 0]; board = []; runStart = performance.now(); newOrder(); beep(440, .08); }
+  function start() { anim = null; state = 'play'; foundRun = 0; score = 0; lives = 3; streak = 0; served = 0; pick = [0, 0, 0]; board = []; runStart = performance.now(); newOrder(); beep(440, .08); }
 
   function submit() {
     if (anim && anim.kind === 'mash') return; // one delivery at a time
@@ -93,6 +95,12 @@ import { hintBoxes } from './hint.mjs';
       for (let i = 0; i < 40; i++) particles.push({ x: 200, y: 330, vx: (Math.random() - .5) * 9, vy: -Math.random() * 9, life: 1, col: T[order.traits[i % order.traits.length]].col });
       flash = { col: 'rgba(198,255,74,', a: .35 };
       chord([523, 659, 784]);
+      const found = record(book, codexKey(pick));
+      if (found.fresh) {
+        foundRun++; store.set('mashlab_book', [...book].join(','));
+        popups.push({ text: 'NEW: ' + monsterName(HEADS[pick[0]], BODIES[pick[1]], EXTRAS[pick[2]]) + ' (' + found.size + '/' + TOTAL + ')', y: 340, life: 1.8, size: 16, col: '#ffad33' });
+      }
+      cv.dataset.book = found.size;
       anim = { kind: 'mash', t0: t }; cv.dataset.last = 'mash ' + served; // read by the device test
       newOrder();
     } else miss('Not quite. They wanted ' + order.traits.filter(k => !have.has(k)).map(k => T[k].label).join(' + '));
@@ -329,7 +337,7 @@ import { hintBoxes } from './hint.mjs';
       text('so the monster has every trait asked for.', 200, 524, 16, '#e8dcff', 'center', 600);
       text('Exact match = PERFECT MASH x1.5', 200, 560, 15, '#ffad33', 'center', 700);
       rr(BTN.x, 620, BTN.w, 56, 28, '#c6ff4a'); text('TAP TO OPEN THE LAB', 200, 649, 20, '#1b1026');
-      if (best) text('Best: ' + best, 200, 700, 14, '#9f8cc4', 'center', 600);
+      if (best || book.size) text((best ? 'Best: ' + best + '  ·  ' : '') + 'Monster Book ' + book.size + '/' + TOTAL, 200, 700, 14, '#9f8cc4', 'center', 600);
     } else {
       // order card
       rr(14, 14, 372, 120, 18, 'rgba(255,255,255,.07)', 'rgba(198,255,74,.4)');
@@ -361,15 +369,15 @@ import { hintBoxes } from './hint.mjs';
       rr(BTN.x, BTN.y, BTN.w, BTN.h, 20, '#c6ff4a'); text('UNLEASH IT!', 200, BTN.y + 24, 18, '#1b1026');
       if (state === 'over') {
         g.fillStyle = 'rgba(10,6,18,.85)'; g.fillRect(0, 0, W, H);
-        text('THE LAB IS CLOSED', 200, 200, 30, '#ff6b8b'); text('Score ' + score, 200, 250, 26, '#fff'); text('Monsters delivered: ' + served, 200, 288, 17, '#e8dcff', 'center', 600);
-        text(score >= best && score > 0 ? 'New best!' : 'Best: ' + best, 200, 320, 17, '#ffad33', 'center', 700);
+        text('THE LAB IS CLOSED', 200, 200, 30, '#ff6b8b'); text('Score ' + score, 200, 250, 26, '#fff'); text('Monsters delivered: ' + served + (foundRun ? '  ·  new in the book: ' + foundRun : ''), 200, 288, 15, '#e8dcff', 'center', 600);
+        text((score >= best && score > 0 ? 'New best!' : 'Best: ' + best) + '  ·  Monster Book ' + book.size + '/' + TOTAL, 200, 320, 16, '#ffad33', 'center', 700);
         if (board.length) { text('NIGHT PARADE BOARD', 200, 368, 13, '#9f8cc4'); board.forEach((s, i) => { const me = s.startsWith('You'); text(s, 200, 395 + i * 24, me ? 17 : 15, me ? '#c6ff4a' : '#e8dcff', 'center', 700); }); }
         rr(BTN.x, 560, BTN.w, 56, 28, '#c6ff4a'); text('MASH AGAIN', 200, 589, 20, '#1b1026');
       }
     }
     // fx
     particles = particles.filter(p => (p.life -= dt) > 0); particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .35; circle(p.x, p.y, 4 * p.life + 1, p.col); });
-    popups = popups.filter(p => (p.life -= dt) > 0); popups.forEach(p => { p.y -= dt * 30; g.globalAlpha = Math.min(1, p.life * 2); text(p.text, 200, p.y, p.small ? 15 : 24, p.small ? '#ffb3c1' : '#c6ff4a'); g.globalAlpha = 1; });
+    popups = popups.filter(p => (p.life -= dt) > 0); popups.forEach(p => { p.y -= dt * 30; g.globalAlpha = Math.min(1, p.life * 2); text(p.text, 200, p.y, p.size || (p.small ? 15 : 24), p.col || (p.small ? '#ffb3c1' : '#c6ff4a')); g.globalAlpha = 1; });
     if (flash) { g.fillStyle = flash.col + flash.a + ')'; g.fillRect(0, 0, W, H); flash.a -= dt; if (flash.a <= 0) flash = null; }
   }
   requestAnimationFrame(frame);

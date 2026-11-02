@@ -1,0 +1,1 @@
+1.0.8: the Monster Book. Every head, body and extra combination you deliver gets a name ("Magma Jack, bat-winged") and goes into your book, 80 monsters to find. A new one pops up on delivery, the title and the closing screen show how many you have.
